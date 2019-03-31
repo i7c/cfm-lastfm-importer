@@ -4,7 +4,8 @@
             [clojure.data.json :as json])
   (:import (com.amazonaws.regions Regions))
   (:import (com.amazonaws.services.dynamodbv2 AmazonDynamoDBClientBuilder))
-  (:import (com.amazonaws.services.dynamodbv2.document DynamoDB Item))
+  (:import (com.amazonaws.services.dynamodbv2.document DynamoDB Item ItemUtils))
+  (:import (com.amazonaws.services.dynamodbv2.model BatchWriteItemRequest PutRequest WriteRequest))
   (:gen-class
    :methods [^:static [handler [String] String]]))
 
@@ -60,12 +61,10 @@
                    :album-mbid (get-in scrobble ["album" "mbid"])
                    :track-mbid (get-in scrobble ["mbid"])}))))
 
-(def table-playbacks
+(def dynamo-db
   (-> (AmazonDynamoDBClientBuilder/standard)
       (.withRegion (Regions/EU_CENTRAL_1))
-      .build
-      DynamoDB.
-      (.getTable "playbacks")))
+      .build))
 
 (defn -handler [user]
   (let
@@ -74,8 +73,16 @@
                    (remove #(get-in % ["@attr", "nowplaying"]))
                    (map (partial scrobble-to-playback user))
                    (map stringify-keys)
-                   (map #(Item/fromMap %))
-                   (count))]
+                   (map #(ItemUtils/fromSimpleMap %))
+                   (map #(PutRequest. %))
+                   (map #(WriteRequest. %))
+                   (partition-all 25)
+                   (map #(BatchWriteItemRequest. {"playbacks" %}))
+                   (pmap #(.batchWriteItem dynamo-db %))
+                   (map #(.getUnprocessedItems %))
+                   (filter seq?)
+                   (count)
+                   (format "%d"))]
     (shutdown-agents)
     result))
 

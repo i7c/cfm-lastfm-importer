@@ -1,11 +1,12 @@
 (ns cfm-lfm-importer.core
   (:use [clojure.walk])
-  (:require [clj-http.client :as client])
-  (:require [clojure.data.json :as json])
+  (:require [clj-http.client :as client]
+            [clojure.data.json :as json])
   (:import (com.amazonaws.regions Regions))
   (:import (com.amazonaws.services.dynamodbv2 AmazonDynamoDBClientBuilder))
   (:import (com.amazonaws.services.dynamodbv2.document DynamoDB Item))
-  (:gen-class))
+  (:gen-class
+   :methods [^:static [handler [String] String]]))
 
 (def sha256 (com.google.common.hash.Hashing/sha256))
 
@@ -50,6 +51,7 @@
                    :album album
                    :time (* 1000 (parse-int time))
                    :id id
+                   :sort-key (clojure.string/join "-" [time id])
                    :lastfm-user user
                    :artist-mbid (get-in scrobble ["artist", "mbid"])
                    :album-mbid (get-in scrobble ["album" "mbid"])
@@ -57,17 +59,21 @@
 
 (def table-playbacks
   (-> (AmazonDynamoDBClientBuilder/standard)
-      (.withRegion (Regions/EU_WEST_1))
+      (.withRegion (Regions/EU_CENTRAL_1))
       .build
       DynamoDB.
       (.getTable "playbacks")))
 
-(defn -main [& args]
-  (->> (first args)
+(defn -handler [user] 
+  (println user)
+  (->> user
        (get-tracks)
        (remove #(get-in % ["@attr", "nowplaying"]))
-       (map (partial scrobble-to-playback (first args)))
+       (map (partial scrobble-to-playback user))
        (map stringify-keys)
        (map #(Item/fromMap %))
        (map #(.putItem table-playbacks %))
-       (doall)))
+       (count)
+       (format "%d")))
+
+(defn -main [& args] (-handler (first args)))

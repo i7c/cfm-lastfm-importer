@@ -7,6 +7,7 @@
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/data.json "0.2.6"]
                  [clj-http "3.9.1"]
+                 [com.amazonaws/aws-lambda-java-core "1.2.0"]
                  [com.amazonaws/aws-java-sdk-dynamodb "1.11.527"]
                  [com.google.guava/guava "27.1-jre"]]
   :repl-options {:init-ns cfm-lfm-importer.core})

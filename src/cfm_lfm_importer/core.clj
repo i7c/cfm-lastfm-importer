@@ -25,13 +25,16 @@
                               "limit" 200}
                :as :json}))
 
+(defn get-page [body] (parse-int (get-in body ["recenttracks" "@attr" "page"])))
+
+(defn get-total-pages [body] (parse-int (get-in body ["recenttracks" "@attr" "totalPages"])))
+
 (defn get-tracks [user]
-  (flatten (map #(get-in % ["recenttracks" "track"])
-                (for [page (drop 1 (range))
-                      :let [chunk (get-track-chunk user page)
-                            body (json/read-str (:body chunk))
-                            totalPages (parse-int (get-in body ["recenttracks" "@attr" "totalPages"]))]
-                      :while (< page totalPages)] body))))
+  (->> (pmap #(get-track-chunk user %) (drop 1 (range)))
+       (map #(json/read-str (:body %)))
+       (take-while #(<= (get-page %) (get-total-pages %)))
+       (map #(get-in % ["recenttracks" "track"]))
+       (flatten)))
 
 (defn scrobble-to-playback
   "Convert last.fm scrobbles to our own playback format"
@@ -64,16 +67,16 @@
       DynamoDB.
       (.getTable "playbacks")))
 
-(defn -handler [user] 
-  (println user)
-  (->> user
-       (get-tracks)
-       (remove #(get-in % ["@attr", "nowplaying"]))
-       (map (partial scrobble-to-playback user))
-       (map stringify-keys)
-       (map #(Item/fromMap %))
-       (map #(.putItem table-playbacks %))
-       (count)
-       (format "%d")))
+(defn -handler [user]
+  (let
+      [result (->> user
+                   (get-tracks)
+                   (remove #(get-in % ["@attr", "nowplaying"]))
+                   (map (partial scrobble-to-playback user))
+                   (map stringify-keys)
+                   (map #(Item/fromMap %))
+                   (count))]
+    (shutdown-agents)
+    result))
 
-(defn -main [& args] (-handler (first args)))
+(defn -main [& args] (print (-handler (first args))))

@@ -7,7 +7,7 @@
   (:import (com.amazonaws.services.dynamodbv2.document DynamoDB Item ItemUtils))
   (:import (com.amazonaws.services.dynamodbv2.model BatchWriteItemRequest PutRequest WriteRequest))
   (:gen-class
-   :methods [^:static [handler [String] String]]))
+   :implements [com.amazonaws.services.lambda.runtime.RequestHandler]))
 
 (def sha256 (com.google.common.hash.Hashing/sha256))
 
@@ -66,9 +66,10 @@
       (.withRegion (Regions/EU_CENTRAL_1))
       .build))
 
-(defn -handler [user]
+(defn -handleRequest [this request context]
   (let
-      [result (->> user
+      [user (get request "user")
+       result (->> user
                    (get-tracks)
                    (remove #(get-in % ["@attr", "nowplaying"]))
                    (map (partial scrobble-to-playback user))
@@ -85,5 +86,3 @@
                    (format "%d"))]
     (shutdown-agents)
     result))
-
-(defn -main [& args] (print (-handler (first args))))

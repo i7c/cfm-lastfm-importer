@@ -45,6 +45,7 @@
         artist (get-in scrobble ["artist" "#text"])
         album (get-in scrobble ["album" "#text"])
         time (get-in scrobble ["date", "uts"])
+        timestamp (* 1000 (parse-int time))
         id (->> [user artist title album time]
                 (map clojure.string/lower-case)
                 (clojure.string/join "-")
@@ -54,9 +55,9 @@
                   {:title title
                    :artist artist
                    :album album
-                   :time (* 1000 (parse-int time))
+                   :time timestamp
                    :id id
-                   :sort-key (clojure.string/join "-" [time id])
+                   :sort-key (clojure.string/join "-" [(format "%020d" timestamp) id])
                    :lastfm-user user
                    :artist-mbid (get-in scrobble ["artist", "mbid"])
                    :album-mbid (get-in scrobble ["album" "mbid"])
@@ -79,4 +80,6 @@
        (map #(BatchWriteItemRequest. {"playbacks" %}))
        (map #(.batchWriteItem dynamo-db %))
        (map #(.getUnprocessedItems %))
+       (map count)
+       (reduce +)
        (json/write-str)))

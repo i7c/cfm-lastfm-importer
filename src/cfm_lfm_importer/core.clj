@@ -30,12 +30,13 @@
 
 (defn get-total-pages [body] (parse-int (get-in body ["recenttracks" "@attr" "totalPages"])))
 
-(defn get-tracks [user]
-  (->> (pmap #(get-track-chunk user %) (drop 1 (range)))
-       (map #(json/read-str (:body %)))
-       (take-while #(<= (get-page %) (get-total-pages %)))
-       (map #(get-in % ["recenttracks" "track"]))
-       (flatten)))
+(defn get-tracks [user page]
+  (flatten
+   (get-in
+    (->> (get-track-chunk user page)
+         (:body)
+         (json/read-str))
+    ["recenttracks" "track"])))
 
 (defn scrobble-to-playback
   "Convert last.fm scrobbles to our own playback format"
@@ -67,22 +68,15 @@
       .build))
 
 (defn -handleRequest [this request context]
-  (let
-      [user (get request "user")
-       result (->> user
-                   (get-tracks)
-                   (remove #(get-in % ["@attr", "nowplaying"]))
-                   (map (partial scrobble-to-playback user))
-                   (map stringify-keys)
-                   (map #(ItemUtils/fromSimpleMap %))
-                   (map #(PutRequest. %))
-                   (map #(WriteRequest. %))
-                   (partition-all 25)
-                   (map #(BatchWriteItemRequest. {"playbacks" %}))
-                   (pmap #(.batchWriteItem dynamo-db %))
-                   (map #(.getUnprocessedItems %))
-                   (filter seq?)
-                   (count)
-                   (format "%d"))]
-    (shutdown-agents)
-    result))
+  (->> (get-tracks (get request "user") (get request "page"))
+       (remove #(get-in % ["@attr", "nowplaying"]))
+       (map (partial scrobble-to-playback (get request "user")))
+       (map stringify-keys)
+       (map #(ItemUtils/fromSimpleMap %))
+       (map #(PutRequest. %))
+       (map #(WriteRequest. %))
+       (partition-all 25)
+       (map #(BatchWriteItemRequest. {"playbacks" %}))
+       (map #(.batchWriteItem dynamo-db %))
+       (map #(.getUnprocessedItems %))
+       (json/write-str)))
